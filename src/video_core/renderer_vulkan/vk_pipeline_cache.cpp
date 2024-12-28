@@ -2,6 +2,13 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <ranges>
+#include <vector>
+#include <fstream>
+#include <string>
+#include <ranges>
+#include <sstream>
+#include <iomanip>
+#include <iostream>
 
 #include "common/config.h"
 #include "common/hash.h"
@@ -34,6 +41,30 @@ constexpr static std::array DescriptorHeapSizes = {
     vk::DescriptorPoolSize{vk::DescriptorType::eSampledImage, 8192},
     vk::DescriptorPoolSize{vk::DescriptorType::eSampler, 1024},
 };
+
+static std::vector<u64> LoadShaderHashesFromFile(const std::string& file_path) {
+    std::vector<u64> skip_hashes;
+    std::ifstream file(file_path);
+
+    if (!file.is_open()) {
+        std::cerr << "Failed to open file: " << file_path << std::endl;
+        return skip_hashes;
+    }
+
+    std::string line;
+    while (std::getline(file, line)) {
+        try {
+            // Convert each line from hex string to u64
+            u64 hash = std::stoull(line, nullptr, 16);
+            skip_hashes.push_back(hash);
+        } catch (const std::exception& e) {
+            std::cerr << "Error parsing hash: " << line << " (" << e.what() << ")" << std::endl;
+        }
+    }
+
+    return skip_hashes;
+}
+
 
 void GatherVertexOutputs(Shader::VertexRuntimeInfo& info,
                          const AmdGpu::Liverpool::VsOutputControl& ctl) {
@@ -254,9 +285,8 @@ const ComputePipeline* PipelineCache::GetComputePipeline() {
 }
 
 bool ShouldSkipShader(u64 shader_hash, const char* shader_type) {
-    static std::vector<u64> skip_hashes = {
-        0xb2b3209b6d5f7281
-    };
+    static const std::vector<u64> skip_hashes = LoadShaderHashesFromFile("hashes.txt");
+
     if (std::ranges::contains(skip_hashes, shader_hash)) {
         LOG_WARNING(Render_Vulkan, "Skipped {} shader hash {:#x}.", shader_type, shader_hash);
         return true;
